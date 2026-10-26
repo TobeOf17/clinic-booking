@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const db = require('./db');
 const { requireApiKey } = require('./auth');
@@ -48,6 +50,20 @@ app.use((req, res, next) => {
   });
   if (req.method === 'OPTIONS') return res.status(204).end();
   next();
+});
+
+// The patient web page is the one route that doesn't need a key: it is a page, not the API.
+// The page carries the limited WEB_KEY so it can call the API.
+const PAGE_TEMPLATE = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+app.get(['/', '/index.html'], (req, res) => {
+  const config = JSON.stringify({ apiKey: process.env.WEB_KEY || null }).replace(/</g, '\\u003c');
+  res.set({
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+  });
+  res.send(PAGE_TEMPLATE.replace('__APP_CONFIG__', config));
 });
 
 // Level 2: auth runs before the body is parsed, so a bad key is always a 401.

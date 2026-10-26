@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Book an Appointment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231f5c4a'/%3E%3Cpath d='M13 7h6v6h6v6h-6v6h-6v-6H7v-6h6z' fill='%23f6f1e7'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f6f1e7;
+    --surface: #fffdf8;
+    --ink: #1d2a26;
+    --muted: #5f6b66;
+    --line: #e4dccb;
+    --brand: #1f5c4a;
+    --brand-ink: #f6f1e7;
+    --brand-soft: #e3eee8;
+    --accent: #c8693d;
+    --danger: #a63a2b;
+    --danger-soft: #f8e5e0;
+    --ok-soft: #e3eee8;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(29,42,38,.06), 0 8px 24px rgba(29,42,38,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141a18; --surface: #1b2320; --ink: #e9efe9; --muted: #9aa8a2; --line: #2c3833;
+      --brand: #7fc4a8; --brand-ink: #10241c; --brand-soft: #1f322b; --accent: #e59a72;
+      --danger: #f08f80; --danger-soft: #3a211d; --ok-soft: #1f322b;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  h1, h2, h3 { font-family: Fraunces, Georgia, serif; font-weight: 600; letter-spacing: -.01em; margin: 0; }
+  button, input { font: inherit; color: inherit; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+
+  header { padding: 36px 0 20px; }
+  .brandline { display: flex; align-items: center; gap: 10px; color: var(--brand); font-weight: 600; font-size: 14px; letter-spacing: .04em; text-transform: uppercase; }
+  .brandline svg { width: 26px; height: 26px; }
+  header h1 { font-size: clamp(28px, 4.5vw, 42px); margin-top: 14px; }
+  header p { color: var(--muted); margin: 8px 0 0; max-width: 560px; }
+
+  nav.tabs { display: flex; gap: 6px; margin: 22px 0 18px; border-bottom: 1px solid var(--line); }
+  nav.tabs button {
+    background: none; border: 0; padding: 10px 14px; cursor: pointer; color: var(--muted);
+    border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500;
+  }
+  nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--brand); }
+
+  .grid { display: grid; grid-template-columns: 1fr 360px; gap: 22px; align-items: start; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; }
+  .card h2 { font-size: 20px; }
+  .sub { color: var(--muted); font-size: 13.5px; margin: 4px 0 0; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 6px; }
+  .chip {
+    border: 1px solid var(--line); background: var(--surface); padding: 6px 12px; border-radius: 999px;
+    cursor: pointer; font-size: 13.5px;
+  }
+  .chip[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+
+  .day { margin-top: 18px; }
+  .day h3 { font-family: Inter, sans-serif; font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+  .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .slot {
+    text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 10px;
+    padding: 10px 12px; cursor: pointer; transition: border-color .15s, background .15s, transform .05s;
+  }
+  .slot:hover:not(:disabled) { border-color: var(--brand); }
+  .slot:active:not(:disabled) { transform: translateY(1px); }
+  .slot .t { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .slot .p { color: var(--muted); font-size: 13px; }
+  .slot[aria-pressed="true"] { background: var(--brand-soft); border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+  .slot:disabled { cursor: not-allowed; opacity: .55; background: transparent; }
+  .slot:disabled .p::after { content: " · booked"; }
+  .slot.past:disabled .p::after { content: " · passed"; }
+
+  .side { position: sticky; top: 16px; }
+  @media (max-width: 860px) { .side { position: static; } }
+  label { display: block; font-size: 13px; font-weight: 500; margin: 14px 0 6px; }
+  input[type=text], input[type=email] {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
+  }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    border: 0; border-radius: 10px; padding: 11px 16px; font-weight: 600; cursor: pointer;
+    background: var(--brand); color: var(--brand-ink);
+  }
+  .btn.block { width: 100%; margin-top: 18px; }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .btn.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); padding: 7px 12px; font-size: 13.5px; }
+  .btn:disabled { opacity: .55; cursor: progress; }
+
+  .picked { margin-top: 14px; padding: 12px; border-radius: 10px; background: var(--brand-soft); }
+  .picked .t { font-weight: 600; }
+  .empty { color: var(--muted); padding: 24px 0 8px; }
+
+  .alert { margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: var(--danger-soft); color: var(--danger); font-size: 14px; }
+  .alert:empty { display: none; }
+
+  .confirm { text-align: left; }
+  .confirm .tick { width: 44px; height: 44px; border-radius: 50%; background: var(--ok-soft); display: grid; place-items: center; color: var(--brand); }
+  .confirm h2 { margin-top: 12px; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 16px 0 0; font-size: 14px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; background: var(--bg); padding: 2px 6px; border-radius: 6px; }
+  .status { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--ok-soft); color: var(--brand); text-transform: capitalize; }
+  .status.cancelled { background: var(--danger-soft); color: var(--danger); }
+
+  .row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+  .row > div { flex: 1 1 220px; }
+  .list { margin-top: 16px; display: grid; gap: 10px; }
+  .item { border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .item .meta { color: var(--muted); font-size: 13px; }
+  .hidden { display: none !important; }
+  footer { color: var(--muted); font-size: 13px; padding: 34px 0 40px; }
+  .skeleton { height: 46px; border-radius: 10px; background: linear-gradient(90deg, var(--line), transparent, var(--line)); background-size: 200% 100%; animation: sh 1.2s infinite linear; opacity: .5; }
+  @keyframes sh { to { background-position: -200% 0; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brandline">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="currentColor"/><path d="M13 7h6v6h6v6h-6v6h-6v-6H7v-6h6z" style="fill: var(--bg)"/></svg>
+      Clinic appointments
+    </div>
+    <h1>Book an appointment</h1>
+    <p>Pick an open time, tell us who you are, and you'll get a booking reference straight away.</p>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="book">Book</button>
+    <button role="tab" aria-selected="false" data-tab="manage">My bookings</button>
+  </nav>
+
+  <!-- Book -->
+  <section id="tab-book">
+    <div class="grid">
+      <div class="card">
+        <h2>Available times</h2>
+        <p class="sub" id="tz-note"></p>
+        <div class="filters" id="filters" aria-label="Filter by provider"></div>
+        <div id="slot-list"><div class="skeleton"></div></div>
+      </div>
+
+      <aside class="side">
+        <div class="card" id="form-card">
+          <h2>Your details</h2>
+          <div id="picked" class="picked hidden"></div>
+          <p class="sub" id="pick-hint">Choose a time on the left first.</p>
+          <form id="book-form" novalidate>
+            <label for="name">Full name</label>
+            <input id="name" type="text" autocomplete="name" required maxlength="200">
+            <label for="email">Email</label>
+            <input id="email" type="email" autocomplete="email" required>
+            <button class="btn block" id="book-btn" type="submit" disabled>Book this time</button>
+            <div class="alert" id="book-error" role="alert"></div>
+          </form>
+        </div>
+
+        <div class="card confirm hidden" id="confirm-card" aria-live="polite">
+          <div class="tick"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+          <h2>You're booked</h2>
+          <p class="sub">Keep your reference to look up or cancel this appointment.</p>
+          <dl id="confirm-details"></dl>
+          <div style="display:flex; gap:8px; margin-top:18px; flex-wrap:wrap">
+            <button class="btn" id="again-btn" type="button">Book another time</button>
+            <button class="btn ghost" id="copy-btn" type="button">Copy reference</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- Manage -->
+  <section id="tab-manage" class="hidden">
+    <div class="grid">
+      <div class="card">
+        <h2>Your bookings</h2>
+        <p class="sub">Enter the email you booked with.</p>
+        <form id="mine-form" class="row" novalidate>
+          <div><label for="mine-email">Email</label><input id="mine-email" type="email" autocomplete="email" required></div>
+          <button class="btn" type="submit">Show bookings</button>
+        </form>
+        <div class="alert" id="mine-error" role="alert"></div>
+        <div class="list" id="mine-list"></div>
+        <button class="btn ghost hidden" id="more-btn" type="button" style="margin-top:12px">Load more</button>
+      </div>
+      <aside class="side">
+        <div class="card">
+          <h2>Look up a reference</h2>
+          <form id="lookup-form" novalidate>
+            <label for="ref">Booking reference</label>
+            <input id="ref" type="text" placeholder="bk_…" required>
+            <button class="btn block" type="submit">Find booking</button>
+          </form>
+          <div class="alert" id="lookup-error" role="alert"></div>
+          <div class="list" id="lookup-result"></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <footer>Need to change a time? Cancel under “My bookings”, then book a new one.</footer>
+</div>
+
+<script>
+const CONFIG = __APP_CONFIG__;
+const $ = (s) => document.querySelector(s);
+
+// ---------- API ----------
+async function api(path, { method = 'GET', body, headers = {} } = {}) {
+  let res;
+  try {
+    res = await fetch(path, {
+      method,
+      headers: { 'X-API-Key': CONFIG.apiKey || '', ...(body ? { 'Content-Type': 'application/json' } : {}), ...headers },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    const err = new Error('Could not reach the server. Check your connection and try again.');
+    err.network = true;
+    throw err;
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    let msg = data.error || `Request failed (${res.status})`;
+    if (res.status === 429) msg = `Too many attempts for this email. Please wait ${res.headers.get('Retry-After') || 60} seconds and try again.`;
+    if (res.status === 409 && path === '/bookings') msg = 'Sorry, someone just booked that time. Please choose another.';
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+// ---------- formatting ----------
+const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+const fullFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+const dayKey = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+const range = (s) => timeFmt.formatRange
+  ? timeFmt.formatRange(new Date(s.start), new Date(s.end))
+  : `${timeFmt.format(new Date(s.start))} – ${timeFmt.format(new Date(s.end))}`;
+function el(tag, attrs = {}, ...children) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') n.className = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else if (k.startsWith('aria-')) n.setAttribute(k, String(!!v === v ? v : (v ?? false)));
+    else if (v !== false && v != null) n.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of children.flat()) if (c != null) n.append(c);
+  return n;
+}
+
+$('#tz-note').textContent = `Times shown in your time zone (${Intl.DateTimeFormat().resolvedOptions().timeZone.replace(/_/g, ' ')}).`;
+
+// ---------- tabs ----------
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.setAttribute('aria-selected', x === b));
+  $('#tab-book').classList.toggle('hidden', b.dataset.tab !== 'book');
+  $('#tab-manage').classList.toggle('hidden', b.dataset.tab !== 'manage');
+}));
+
+// ---------- slots ----------
+const state = { slots: [], provider: null, picked: null, slotById: new Map() };
+
+async function loadSlots() {
+  try {
+    const { slots } = await api('/slots');
+    state.slots = slots;
+    state.slotById = new Map(slots.map((s) => [s.id, s]));
+    if (state.picked) {
+      const fresh = state.slotById.get(state.picked.id);
+      if (!fresh || !fresh.available) pick(null);
+    }
+    renderSlots();
+  } catch (e) {
+    $('#slot-list').replaceChildren(el('div', { class: 'alert' }, e.message));
+  }
+}
+
+function renderSlots() {
+  const now = Date.now();
+  const providers = [...new Set(state.slots.map((s) => s.provider))].sort();
+  $('#filters').replaceChildren(...(providers.length > 1 ? [null, ...providers].map((p) =>
+    el('button', { class: 'chip', type: 'button', 'aria-pressed': state.provider === p,
+      onclick: () => { state.provider = p; renderSlots(); } }, p || 'All providers')) : []));
+
+  const upcoming = state.slots.filter((s) => new Date(s.end).getTime() > now && (!state.provider || s.provider === state.provider));
+  if (!upcoming.length) {
+    $('#slot-list').replaceChildren(el('p', { class: 'empty' }, 'No appointment times are open right now. Please check back soon.'));
+    return;
+  }
+  const days = new Map();
+  for (const s of upcoming) {
+    const d = new Date(s.start);
+    const k = dayKey(d);
+    if (!days.has(k)) days.set(k, { label: dayFmt.format(d), slots: [] });
+    days.get(k).slots.push(s);
+  }
+  $('#slot-list').replaceChildren(...[...days.values()].map((day) => el('div', { class: 'day' },
+    el('h3', {}, day.label),
+    el('div', { class: 'slots' }, day.slots.map((s) => {
+      const started = new Date(s.start).getTime() <= now;
+      return el('button', {
+        class: 'slot' + (started ? ' past' : ''), type: 'button',
+        disabled: !s.available || started,
+        'aria-pressed': state.picked && state.picked.id === s.id,
+        'aria-label': `${fullFmt.format(new Date(s.start))} with ${s.provider}${s.available ? '' : ', booked'}`,
+        onclick: () => pick(s),
+      }, el('div', { class: 't' }, range(s)), el('div', { class: 'p' }, s.provider));
+    })))));
+}
+
+function pick(slot) {
+  state.picked = slot;
+  state.idemKey = null; // a new choice is a new booking attempt
+  $('#book-error').textContent = '';
+  $('#pick-hint').classList.toggle('hidden', !!slot);
+  $('#book-btn').disabled = !slot;
+  const box = $('#picked');
+  box.classList.toggle('hidden', !slot);
+  if (slot) {
+    box.replaceChildren(
+      el('div', { class: 't' }, fullFmt.format(new Date(slot.start))),
+      el('div', { class: 'sub' }, `${range(slot)} · ${slot.provider}`));
+    // On a phone the form sits below the slot list, so bring it into view.
+    if (window.matchMedia('(max-width: 860px)').matches) {
+      $('#form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+  renderSlots();
+}
+
+// ---------- booking ----------
+$('#book-form').addEventListener('input', () => { state.idemKey = null; });
+$('#book-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = $('#name').value.trim();
+  const email = $('#email').value.trim();
+  const errBox = $('#book-error');
+  errBox.textContent = '';
+  if (!state.picked) return (errBox.textContent = 'Choose a time first.');
+  if (!name) return (errBox.textContent = 'Please enter your name.');
+  if (!/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(email)) return (errBox.textContent = 'Please enter a valid email address.');
+
+  // One Idempotency-Key per booking attempt: a double-click or a retry after a dropped
+  // connection can never create a second booking.
+  state.idemKey = state.idemKey || crypto.randomUUID();
+  const btn = $('#book-btn');
+  btn.disabled = true; btn.textContent = 'Booking…';
+  try {
+    const booking = await api('/bookings', {
+      method: 'POST',
+      body: { slot_id: state.picked.id, name, email },
+      headers: { 'Idempotency-Key': state.idemKey },
+    });
+    showConfirmation(booking, state.picked);
+    $('#mine-email').value = booking.email;
+    state.idemKey = null;
+    state.picked = null;
+    loadSlots();
+  } catch (err) {
+    // Only a dropped connection keeps the key, so retrying replays rather than re-books.
+    if (!err.network) state.idemKey = null;
+    if (err.status === 409 || err.status === 404) { pick(null); loadSlots(); }
+    errBox.textContent = err.message;
+  } finally {
+    btn.textContent = 'Book this time';
+    btn.disabled = !state.picked;
+  }
+});
+
+function details(booking, slot) {
+  const rows = [['Reference', el('code', {}, booking.id)]];
+  if (slot) {
+    rows.push(['When', fullFmt.format(new Date(slot.start))], ['Time', range(slot)], ['With', slot.provider]);
+  } else {
+    rows.push(['Slot', booking.slot_id]);
+  }
+  rows.push(['Name', booking.name], ['Email', booking.email],
+    ['Status', el('span', { class: 'status ' + booking.status }, booking.status)]);
+  return rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]);
+}
+
+function showConfirmation(booking, slot) {
+  $('#confirm-details').replaceChildren(...details(booking, slot));
+  $('#form-card').classList.add('hidden');
+  $('#confirm-card').classList.remove('hidden');
+  $('#copy-btn').onclick = async () => {
+    try { await navigator.clipboard.writeText(booking.id); $('#copy-btn').textContent = 'Copied'; }
+    catch { $('#copy-btn').textContent = booking.id; }
+  };
+  $('#confirm-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+$('#again-btn').addEventListener('click', () => {
+  $('#confirm-card').classList.add('hidden');
+  $('#form-card').classList.remove('hidden');
+  $('#copy-btn').textContent = 'Copy reference';
+  pick(null);
+});
+
+// ---------- manage ----------
+function bookingItem(b, onChange) {
+  const slot = state.slotById.get(b.slot_id);
+  const when = slot ? `${fullFmt.format(new Date(slot.start))} · ${slot.provider}` : `Slot ${b.slot_id}`;
+  const cancellable = b.status === 'confirmed' && (!slot || new Date(slot.start).getTime() > Date.now());
+  const item = el('div', { class: 'item' },
+    el('div', {},
+      el('div', { style: 'font-weight:600' }, when),
+      el('div', { class: 'meta' }, el('code', {}, b.id), ' ', el('span', { class: 'status ' + b.status }, b.status))),
+    cancellable ? el('button', { class: 'btn danger', type: 'button', onclick: async (e) => {
+      if (!confirm('Cancel this appointment? The time will be released to other patients.')) return;
+      e.target.disabled = true;
+      try {
+        const updated = await api('/bookings/' + encodeURIComponent(b.id), { method: 'DELETE' });
+        item.replaceWith(bookingItem(updated, onChange));
+        loadSlots();
+      } catch (err) { alert(err.message); e.target.disabled = false; }
+    } }, 'Cancel') : null);
+  return item;
+}
+
+let mine = { email: '', cursor: null };
+async function loadMine(reset) {
+  $('#mine-error').textContent = '';
+  if (reset) $('#mine-list').replaceChildren();
+  try {
+    const q = new URLSearchParams({ email: mine.email, limit: '10' });
+    if (mine.cursor) q.set('cursor', mine.cursor);
+    const page = await api('/bookings?' + q);
+    if (reset && !page.bookings.length) $('#mine-list').append(el('p', { class: 'empty' }, 'No bookings found for that email.'));
+    page.bookings.forEach((b) => $('#mine-list').append(bookingItem(b)));
+    mine.cursor = page.next_cursor;
+    $('#more-btn').classList.toggle('hidden', !page.next_cursor);
+  } catch (err) { $('#mine-error').textContent = err.message; }
+}
+$('#mine-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  mine = { email: $('#mine-email').value.trim(), cursor: null };
+  if (!mine.email) return ($('#mine-error').textContent = 'Please enter your email.');
+  loadMine(true);
+});
+$('#more-btn').addEventListener('click', () => loadMine(false));
+
+$('#lookup-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const ref = $('#ref').value.trim();
+  $('#lookup-error').textContent = '';
+  $('#lookup-result').replaceChildren();
+  if (!ref) return ($('#lookup-error').textContent = 'Please enter a booking reference.');
+  try {
+    const b = await api('/bookings/' + encodeURIComponent(ref));
+    $('#lookup-result').append(bookingItem(b));
+  } catch (err) {
+    $('#lookup-error').textContent = err.status === 404 ? 'No booking with that reference.' : err.message;
+  }
+});
+
+// ---------- start ----------
+if (!CONFIG.apiKey) {
+  $('#slot-list').replaceChildren(el('div', { class: 'alert' }, 'This page is not configured yet (WEB_KEY is not set on the server).'));
+} else {
+  loadSlots();
+  setInterval(() => { if (!document.hidden) loadSlots(); }, 30000);
+}
+</script>
+</body>
+</html>
