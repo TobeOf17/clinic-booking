@@ -12,7 +12,9 @@ function keyMatches(given, expected) {
 
 /**
  * Every API request needs X-API-Key.
- *  - API_KEY: full access (what the assessment checks use).
+ *  - API_KEY: full access (what the assessment checks use). Keep it secret.
+ *  - WEB_KEY: optional second key, embedded in the public booking page. A browser page
+ *    can't keep a secret, so this key can do everything except POST /reset.
  */
 function requireApiKey(req, res, next) {
   const apiKey = process.env.API_KEY;
@@ -22,6 +24,13 @@ function requireApiKey(req, res, next) {
   const given = req.get('X-API-Key');
   if (keyMatches(given, apiKey)) {
     req.keyRole = 'admin';
+    return next();
+  }
+  if (keyMatches(given, process.env.WEB_KEY)) {
+    if (req.path === '/reset') {
+      return res.status(403).json({ error: 'this key cannot reset data' });
+    }
+    req.keyRole = 'web';
     return next();
   }
   return res.status(401).json({ error: given ? 'invalid API key' : 'missing API key' });
