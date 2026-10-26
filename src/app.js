@@ -53,6 +53,35 @@ app.use(requireApiKey);
 
 app.use(express.json({ limit: '1mb' }));
 
+/**
+ * Inserts a confirmed booking. The slot's existence and start time are checked in the
+ * same statement as the insert, and the partial unique index turns a double booking
+ * into a unique violation, so there is no check-then-insert race.
+ * `conn` is the pool helper or a transaction client.
+ */
+async function createBooking(conn, { slot_id, name, email }) {
+  let rows;
+  try {
+    ({ rows } = await conn.query(
+      `INSERT INTO bookings (id, slot_id, name, email, status)
+       SELECT $1, s.id, $3, $4, 'confirmed'
+       FROM slots s
+       WHERE s.id = $2 AND s.start_at > clock_timestamp()
+       RETURNING *`,
+      [newBookingId(), slot_id, name, email]
+    ));
+  } catch (err) {
+    if (err.code === '23505') throw new HttpError(409, 'slot is already booked');
+    throw err;
+  }
+  if (rows.length) return toBooking(rows[0]);
+
+  // Nothing inserted: work out why.
+  const slot = await conn.query('SELECT 1 FROM slots WHERE id = $1', [slot_id]);
+  if (!slot.rows.length) throw new HttpError(404, 'slot not found');
+  throw new HttpError(400, 'slot has already started');
+}
+
 // ---------- Level 1: reset ----------
 
 app.post('/reset', wrap(async (req, res) => {
@@ -121,19 +150,8 @@ app.post('/bookings', wrap(async (req, res) => {
   if (error) throw new HttpError(400, error);
   const { slot_id, name, email } = value;
 
-  const slot = await db.query(
-    'SELECT start_at <= clock_timestamp() AS started FROM slots WHERE id = $1',
-    [slot_id]
-  );
-  if (!slot.rows.length) throw new HttpError(404, 'slot not found');
-  if (slot.rows[0].started) throw new HttpError(400, 'slot has already started');
-
-  const { rows } = await db.query(
-    `INSERT INTO bookings (id, slot_id, name, email, status)
-     VALUES ($1, $2, $3, $4, 'confirmed') RETURNING *`,
-    [newBookingId(), slot_id, name, email]
-  );
-  res.status(201).json(toBooking(rows[0]));
+  const booking = await createBooking(db, { slot_id, name, email });
+  res.status(201).json(booking);
 }));
 
 // ---------- Level 1: get a booking ----------
@@ -142,6 +160,23 @@ app.get('/bookings/:id', wrap(async (req, res) => {
   const { rows } = await db.query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
   if (!rows.length) throw new HttpError(404, 'booking not found');
   res.json(toBooking(rows[0]));
+}));
+
+// ---------- Level 3: cancel a booking ----------
+
+app.delete('/bookings/:id', wrap(async (req, res) => {
+  // A single conditional UPDATE, so two simultaneous cancels can't both succeed.
+  const { rows } = await db.query(
+    `UPDATE bookings SET status = 'cancelled'
+     WHERE id = $1 AND status = 'confirmed'
+     RETURNING *`,
+    [req.params.id]
+  );
+  if (rows.length) return res.json(toBooking(rows[0]));
+
+  const existing = await db.query('SELECT status FROM bookings WHERE id = $1', [req.params.id]);
+  if (!existing.rows.length) throw new HttpError(404, 'booking not found');
+  throw new HttpError(409, 'booking is already cancelled');
 }));
 
 // ---------- fallbacks ----------

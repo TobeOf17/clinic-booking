@@ -36,6 +36,11 @@ const SCHEMA = [
      status     TEXT NOT NULL CHECK (status IN ('confirmed', 'cancelled')),
      created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
    )`,
+  // Level 3: at most one confirmed booking per slot, enforced by the database itself,
+  // so it holds no matter how many requests (or serverless instances) race for a slot.
+  // Cancelled bookings fall out of the index, which frees the slot.
+  `CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_confirmed_per_slot
+     ON bookings (slot_id) WHERE status = 'confirmed'`,
 ];
 
 let ready;
