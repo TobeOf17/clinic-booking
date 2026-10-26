@@ -1,6 +1,8 @@
 const crypto = require('crypto');
 const express = require('express');
 const db = require('./db');
+const { requireApiKey } = require('./auth');
+const { validateNewBooking } = require('./validate');
 
 const app = express();
 app.disable('x-powered-by');
@@ -32,6 +34,22 @@ function toBooking(row) {
 function newBookingId() {
   return 'bk_' + crypto.randomUUID().replace(/-/g, '');
 }
+
+// CORS, so browser-based clients (and checkers) can call the API from another origin.
+app.use((req, res, next) => {
+  res.set({
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-API-Key, Idempotency-Key',
+    'Access-Control-Expose-Headers': 'Retry-After',
+    'Access-Control-Max-Age': '600',
+  });
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  next();
+});
+
+// Level 2: auth runs before the body is parsed, so a bad key is always a 401.
+app.use(requireApiKey);
 
 app.use(express.json({ limit: '1mb' }));
 
@@ -99,8 +117,17 @@ app.get('/slots', wrap(async (req, res) => {
 // ---------- Level 1: book a slot ----------
 
 app.post('/bookings', wrap(async (req, res) => {
-  const body = req.body || {};
-  const { slot_id, name, email } = body;
+  const { error, value } = validateNewBooking(req.body);
+  if (error) throw new HttpError(400, error);
+  const { slot_id, name, email } = value;
+
+  const slot = await db.query(
+    'SELECT start_at <= clock_timestamp() AS started FROM slots WHERE id = $1',
+    [slot_id]
+  );
+  if (!slot.rows.length) throw new HttpError(404, 'slot not found');
+  if (slot.rows[0].started) throw new HttpError(400, 'slot has already started');
+
   const { rows } = await db.query(
     `INSERT INTO bookings (id, slot_id, name, email, status)
      VALUES ($1, $2, $3, $4, 'confirmed') RETURNING *`,
