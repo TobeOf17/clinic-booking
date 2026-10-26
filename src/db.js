@@ -51,6 +51,13 @@ const SCHEMA = [
      response     JSONB NOT NULL,
      created_at   TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
    )`,
+  // Level 5: every booking attempt per email, for a sliding one-minute window.
+  `CREATE TABLE IF NOT EXISTS booking_attempts (
+     id           BIGSERIAL PRIMARY KEY,
+     email        TEXT NOT NULL,
+     attempted_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+   )`,
+  `CREATE INDEX IF NOT EXISTS booking_attempts_email_idx ON booking_attempts (email, attempted_at)`,
 ];
 
 let ready;

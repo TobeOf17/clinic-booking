@@ -2,7 +2,8 @@ const crypto = require('crypto');
 const express = require('express');
 const db = require('./db');
 const { requireApiKey } = require('./auth');
-const { validateNewBooking } = require('./validate');
+const { validateNewBooking, clean } = require('./validate');
+const rateLimit = require('./rateLimit');
 const idempotency = require('./idempotency');
 
 const app = express();
@@ -110,8 +111,9 @@ app.post('/reset', wrap(async (req, res) => {
   });
 
   await db.tx(async (c) => {
-    // Stored idempotent responses point at bookings that no longer exist, so they go too.
-    await c.query('TRUNCATE bookings, slots, idempotency_keys');
+    // Stored idempotent responses point at bookings that no longer exist, so they go too,
+    // and rate-limit counters start fresh.
+    await c.query('TRUNCATE bookings, slots, idempotency_keys, booking_attempts');
     if (rows.length) {
       await c.query(
         `INSERT INTO slots (id, provider, start_raw, end_raw, start_at, end_at)
@@ -171,14 +173,31 @@ app.post('/bookings', wrap(async (req, res) => {
   const requestHash = idemKey ? idempotency.hashBody(req.body) : null;
 
   const result = await db.tx(async (client) => {
+    let stored = null;
     if (idemKey) {
-      const stored = await idempotency.lockAndLoad(client, idemKey);
-      if (stored) {
-        if (stored.request_hash !== requestHash) {
-          return { status: 422, body: { error: 'Idempotency-Key was already used with a different request body' } };
-        }
+      stored = await idempotency.lockAndLoad(client, idemKey);
+      // A genuine retry is a replay of an earlier attempt, not a new one,
+      // so it is answered before the rate limit is counted.
+      if (stored && stored.request_hash === requestHash) {
         return { status: stored.status_code, body: stored.response, replayed: true };
       }
+    }
+
+    // Level 5: every other attempt counts against its email, including failures.
+    const email = clean(req.body && req.body.email).toLowerCase();
+    if (email) {
+      const limited = await rateLimit.checkAndRecord(client, email);
+      if (limited) {
+        return {
+          status: 429,
+          body: { error: `too many booking attempts for this email; retry in ${limited.retryAfter}s` },
+          headers: { 'Retry-After': String(limited.retryAfter) },
+        };
+      }
+    }
+
+    if (stored) {
+      return { status: 422, body: { error: 'Idempotency-Key was already used with a different request body' } };
     }
 
     const outcome = await attemptBooking(client, req.body);
@@ -187,6 +206,7 @@ app.post('/bookings', wrap(async (req, res) => {
   });
 
   if (result.replayed) res.set('Idempotent-Replayed', 'true');
+  if (result.headers) res.set(result.headers);
   res.status(result.status).json(result.body);
 }));
 
