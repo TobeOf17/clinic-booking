@@ -3,6 +3,7 @@ const express = require('express');
 const db = require('./db');
 const { requireApiKey } = require('./auth');
 const { validateNewBooking } = require('./validate');
+const idempotency = require('./idempotency');
 
 const app = express();
 app.disable('x-powered-by');
@@ -57,10 +58,12 @@ app.use(express.json({ limit: '1mb' }));
  * Inserts a confirmed booking. The slot's existence and start time are checked in the
  * same statement as the insert, and the partial unique index turns a double booking
  * into a unique violation, so there is no check-then-insert race.
- * `conn` is the pool helper or a transaction client.
+ * `conn` is a client inside a transaction; a savepoint keeps the transaction usable
+ * after a unique violation so the outcome can still be recorded.
  */
 async function createBooking(conn, { slot_id, name, email }) {
   let rows;
+  await conn.query('SAVEPOINT create_booking');
   try {
     ({ rows } = await conn.query(
       `INSERT INTO bookings (id, slot_id, name, email, status)
@@ -70,7 +73,9 @@ async function createBooking(conn, { slot_id, name, email }) {
        RETURNING *`,
       [newBookingId(), slot_id, name, email]
     ));
+    await conn.query('RELEASE SAVEPOINT create_booking');
   } catch (err) {
+    await conn.query('ROLLBACK TO SAVEPOINT create_booking');
     if (err.code === '23505') throw new HttpError(409, 'slot is already booked');
     throw err;
   }
@@ -105,7 +110,8 @@ app.post('/reset', wrap(async (req, res) => {
   });
 
   await db.tx(async (c) => {
-    await c.query('TRUNCATE bookings, slots');
+    // Stored idempotent responses point at bookings that no longer exist, so they go too.
+    await c.query('TRUNCATE bookings, slots, idempotency_keys');
     if (rows.length) {
       await c.query(
         `INSERT INTO slots (id, provider, start_raw, end_raw, start_at, end_at)
@@ -145,13 +151,90 @@ app.get('/slots', wrap(async (req, res) => {
 
 // ---------- Level 1: book a slot ----------
 
-app.post('/bookings', wrap(async (req, res) => {
-  const { error, value } = validateNewBooking(req.body);
-  if (error) throw new HttpError(400, error);
-  const { slot_id, name, email } = value;
+// Runs the booking itself and returns { status, body } instead of throwing,
+// so every outcome (including errors) can be stored against an Idempotency-Key.
+async function attemptBooking(client, rawBody) {
+  try {
+    const { error, value } = validateNewBooking(rawBody);
+    if (error) throw new HttpError(400, error);
+    return { status: 201, body: await createBooking(client, value) };
+  } catch (err) {
+    if (err instanceof HttpError) return { status: err.status, body: { error: err.message } };
+    throw err;
+  }
+}
 
-  const booking = await createBooking(db, { slot_id, name, email });
-  res.status(201).json(booking);
+app.post('/bookings', wrap(async (req, res) => {
+  const rawKey = req.get('Idempotency-Key');
+  const idemKey = rawKey && rawKey.trim() ? rawKey.trim() : null;
+  if (idemKey && idemKey.length > 255) throw new HttpError(400, 'Idempotency-Key is too long');
+  const requestHash = idemKey ? idempotency.hashBody(req.body) : null;
+
+  const result = await db.tx(async (client) => {
+    if (idemKey) {
+      const stored = await idempotency.lockAndLoad(client, idemKey);
+      if (stored) {
+        if (stored.request_hash !== requestHash) {
+          return { status: 422, body: { error: 'Idempotency-Key was already used with a different request body' } };
+        }
+        return { status: stored.status_code, body: stored.response, replayed: true };
+      }
+    }
+
+    const outcome = await attemptBooking(client, req.body);
+    if (idemKey) await idempotency.save(client, idemKey, requestHash, outcome.status, outcome.body);
+    return outcome;
+  });
+
+  if (result.replayed) res.set('Idempotent-Replayed', 'true');
+  res.status(result.status).json(result.body);
+}));
+
+// ---------- Level 4: list a person's bookings ----------
+
+const encodeCursor = (seq) => Buffer.from(JSON.stringify({ s: String(seq) })).toString('base64url');
+function decodeCursor(cursor) {
+  try {
+    const { s } = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    if (typeof s === 'string' && /^\d{1,18}$/.test(s)) return s;
+  } catch { /* fall through */ }
+  return null;
+}
+
+app.get('/bookings', wrap(async (req, res) => {
+  const { email, limit: rawLimit, cursor } = req.query;
+
+  if (typeof email !== 'string' || !email.trim()) throw new HttpError(400, 'email is required');
+
+  let limit = 10;
+  if (rawLimit !== undefined) {
+    if (typeof rawLimit !== 'string' || !/^\d+$/.test(rawLimit)) {
+      throw new HttpError(400, 'limit must be a whole number from 1 to 50');
+    }
+    limit = Number(rawLimit);
+    if (limit < 1 || limit > 50) throw new HttpError(400, 'limit must be a whole number from 1 to 50');
+  }
+
+  let afterSeq = '0';
+  if (cursor !== undefined && cursor !== '') {
+    afterSeq = typeof cursor === 'string' ? decodeCursor(cursor) : null;
+    if (afterSeq === null) throw new HttpError(400, 'cursor is not valid');
+  }
+
+  // Emails are stored lower-cased, so lower-casing the query makes the match case-insensitive.
+  const { rows } = await db.query(
+    `SELECT * FROM bookings
+     WHERE email = $1 AND seq > $2::bigint
+     ORDER BY seq
+     LIMIT $3`,
+    [email.trim().toLowerCase(), afterSeq, limit + 1]
+  );
+
+  const page = rows.slice(0, limit);
+  res.json({
+    bookings: page.map(toBooking),
+    next_cursor: rows.length > limit ? encodeCursor(page[page.length - 1].seq) : null,
+  });
 }));
 
 // ---------- Level 1: get a booking ----------

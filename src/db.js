@@ -41,6 +41,16 @@ const SCHEMA = [
   // Cancelled bookings fall out of the index, which frees the slot.
   `CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_confirmed_per_slot
      ON bookings (slot_id) WHERE status = 'confirmed'`,
+  // Level 4: a person's bookings, oldest first.
+  `CREATE INDEX IF NOT EXISTS bookings_email_seq_idx ON bookings (email, seq)`,
+  // Level 4: the stored response for each Idempotency-Key.
+  `CREATE TABLE IF NOT EXISTS idempotency_keys (
+     key          TEXT PRIMARY KEY,
+     request_hash TEXT NOT NULL,
+     status_code  INT NOT NULL,
+     response     JSONB NOT NULL,
+     created_at   TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+   )`,
 ];
 
 let ready;
