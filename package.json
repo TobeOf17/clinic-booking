@@ -1,0 +1,19 @@
+{
+  "name": "clinic-booking-api",
+  "version": "1.0.0",
+  "description": "Clinic appointment booking API and patient web page (Koya assessment, task 1)",
+  "main": "server.js",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/",
+    "seed": "node scripts/seed.js"
+  },
+  "dependencies": {
+    "express": "^4.22.3",
+    "pg": "^8.23.1"
+  }
+}
