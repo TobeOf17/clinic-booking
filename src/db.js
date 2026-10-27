@@ -60,14 +60,31 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS booking_attempts_email_idx ON booking_attempts (email, attempted_at)`,
 ];
 
+// Every table and index SCHEMA creates. If all of them exist, the schema is up to date.
+const SCHEMA_OBJECTS = [
+  'slots', 'slots_start_idx', 'bookings', 'bookings_one_confirmed_per_slot',
+  'bookings_email_seq_idx', 'idempotency_keys', 'booking_attempts', 'booking_attempts_email_idx',
+];
+
 let ready;
 function migrate() {
   if (!ready) {
     ready = (async () => {
+      // Fast path, taken on every cold start once the schema exists: a catalog lookup that
+      // takes no table locks. Running DDL here instead (even CREATE INDEX IF NOT EXISTS,
+      // which locks the table before checking) deadlocks against bookings in flight when
+      // a traffic burst starts many serverless instances at once.
+      const { rows } = await pool.query(
+        `SELECT count(*)::int AS n FROM unnest($1::text[]) AS o(name)
+         WHERE to_regclass('public.' || o.name) IS NOT NULL`,
+        [SCHEMA_OBJECTS]
+      );
+      if (rows[0].n === SCHEMA_OBJECTS.length) return;
+
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        // Several cold starts can race to create the schema; serialise them.
+        // First deploy only: serialise instances racing to create the schema.
         await client.query('SELECT pg_advisory_xact_lock(7262201)');
         for (const sql of SCHEMA) await client.query(sql);
         await client.query('COMMIT');
