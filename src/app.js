@@ -54,7 +54,7 @@ app.use((req, res, next) => {
 
 // The patient web page is the one route that doesn't need a key: it is a page, not the API.
 // The page carries the limited WEB_KEY so it can call the API.
-const PAGE_TEMPLATE = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+const PAGE_TEMPLATE = fs.readFileSync(path.join(__dirname, '..', 'web', 'index.html'), 'utf8');
 app.get(['/', '/index.html'], (req, res) => {
   const config = JSON.stringify({ apiKey: process.env.WEB_KEY || null }).replace(/</g, '\\u003c');
   res.set({

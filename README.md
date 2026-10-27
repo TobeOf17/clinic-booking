@@ -125,7 +125,7 @@ src/auth.js         X-API-Key / WEB_KEY check
 src/validate.js     Booking validation
 src/idempotency.js  Idempotency-Key storage and locking
 src/rateLimit.js    Per-email sliding window
-public/index.html   Patient web page
+web/index.html      Patient web page (not public/: Vercel would serve that raw)
 scripts/seed.js     Demo slots
 test/api.test.js    Spec tests
 ```
